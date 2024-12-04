@@ -1,64 +1,76 @@
-﻿// See https://aka.ms/new-console-template for more information
-
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using System.Text.Json;
 
-var query = "some-topic";
-
-var oldResults = ReadCurrent(query);
-var knownUrl = oldResults!.Select(x => x.url).ToHashSet();
-
-var currentResults = await FetchCurrentResults(query);
-
-var newResults = new List<Results>(oldResults);
-newResults.AddRange(currentResults.Where(x => !knownUrl.Contains(x.url)));
-
-
-var filePath = StoreResults(query, newResults);
-
-Console.WriteLine($"Object written to {filePath} with indentation.");
-
-Console.WriteLine("Hello, World!");
-
-string StoreResults(string fileName, List<Results> resultsList)
+var tasks = new[]
 {
-    var options = new JsonSerializerOptions
+    // new
+    // {
+    //     lang = "en",
+    //     topics = new[] { "topic1", "topic2" }
+    // },
+    new
     {
-        WriteIndented = true // Enable indentation
-    };
-
-// Serialize the object to JSON and write to a file
-    string filePath1 = Path.Combine(GetParentFolder(), $"{fileName}.json");
-    using (FileStream fs = File.Create(filePath1))
-    {
-        JsonSerializer.Serialize(fs, resultsList, options);
+        lang = "fr",
+        topics = new[] { "sujet1", "sujet2" }
     }
+};
 
-    return filePath1;
+foreach (var task in tasks)
+{
+    foreach (string topic in task.topics)
+    {
+        await ProcessTopic(topic, task.lang);
+    }
 }
 
-List<Results>? ReadCurrent(string fileName)
-{
 
-// Serialize the object to JSON and write to a file
-    string filePath1 = Path.Combine(GetParentFolder(), $"{fileName}.json");
-    using (FileStream fs = File.OpenRead(filePath1))
+return;
+
+async Task ProcessTopic(string topic, string lang)
+{
+    var oldResults = ReadCurrent(topic, lang);
+    var knownUrl = oldResults!.Select(x => x.url).ToHashSet();
+
+    var currentResults = await FetchCurrentResults(topic, lang);
+
+    var latestResults = new List<Results>(oldResults);
+    var newResults = currentResults.Where(x => !knownUrl.Contains(x.url));
+
+    Console.WriteLine("Here are the results:");
+    foreach (var result in newResults)
     {
-        return JsonSerializer.Deserialize<List<Results>>(fs);
+        Console.WriteLine($"\t{result.url} - {result.title}");
     }
 
+    latestResults.AddRange(newResults);
+
+
+    var filePath = StoreResults(topic, lang, latestResults);
+
+    Console.WriteLine($"Stored in: {filePath}");
 }
 
-string GetParentFolder([CallerFilePath] string path = "") => new DirectoryInfo(Path.GetDirectoryName(path)).Parent.FullName;
+List<Results>? ReadCurrent(string topic, string lang)
+{
+// Serialize the object to JSON and write to a file
+    string filePath1 = GetFileResultPath(topic, lang);
+    if (!File.Exists(filePath1))
+    {
+        return new List<Results>();
+    }
 
-async Task<List<Results>> FetchCurrentResults(string s1)
+    using FileStream fs = new FileStream(filePath1, FileMode.Open, FileAccess.Read, FileShare.Read);
+    return JsonSerializer.Deserialize<List<Results>>(fs);
+}
+
+async Task<List<Results>> FetchCurrentResults(string s1, string lang)
 {
     {
         List<Results> list = new List<Results>();
         Results[]? lastResults = null;
         for (var i = 1; i <= 100 && (lastResults == null || lastResults.Length > 1); i++)
         {
-            lastResults = await GetAndDisplay(s1, i);
+            lastResults = await GetAndDisplay(s1, lang,i);
             if (lastResults?.Length > 0)
             {
                 list.AddRange(lastResults);
@@ -68,13 +80,13 @@ async Task<List<Results>> FetchCurrentResults(string s1)
         return list;
     }
 
-    async Task<string> GetSearchResultPage(string query, int page)
+    async Task<string> GetSearchResultPage(string query, string lang, int page)
     {
         string s;
         using (HttpClient client = new HttpClient())
         {
             var response = await client.GetAsync(
-                $"https://somewhere.tld/searxng/search?q={query}&language=fr&pageno={page}&format=json");
+                $"https://somewhere.tld/searxng/search?q={query}&language={lang}&pageno={page}&format=json");
             response.EnsureSuccessStatusCode();
             s = await response.Content.ReadAsStringAsync();
         }
@@ -82,18 +94,44 @@ async Task<List<Results>> FetchCurrentResults(string s1)
         return s;
     }
 
-    async Task<Results[]?> GetAndDisplay(string query, int page = 1)
+    async Task<Results[]?> GetAndDisplay(string query, string lang, int page = 1)
     {
-        var data1 = await GetSearchResultPage(query, page);
+        var data1 = await GetSearchResultPage(query, lang, page);
         var rootObject = JsonSerializer.Deserialize<RootObject>(data1);
         var rootObjectResults = rootObject?.results ?? [];
-        foreach (var result in rootObjectResults)
-        {
-            Console.WriteLine($"{result.url} --- {result.title}");
-        }
+
+        var engines = rootObjectResults.SelectMany(x => x.engines).Distinct();
+
+        Console.WriteLine(
+            $"Page {page} with {rootObjectResults.Length} results about {query} from the following engines: {string.Join(", ", engines)}.");
 
         return rootObjectResults;
     }
+}
+
+string StoreResults(string fileName, string lang, List<Results> resultsList)
+{
+    var options = new JsonSerializerOptions
+    {
+        WriteIndented = true // Enable indentation
+    };
+
+// Serialize the object to JSON and write to a file
+    string filePath1 = GetFileResultPath(fileName, lang);
+    using (FileStream fs = File.Create(filePath1))
+    {
+        JsonSerializer.Serialize(fs, resultsList, options);
+    }
+
+    return filePath1;
+}
+
+string GetParentFolder([CallerFilePath] string path = "") =>
+    new DirectoryInfo(Path.GetDirectoryName(path)).Parent.FullName;
+
+string GetFileResultPath(string topic, string lang)
+{
+    return Path.Combine(GetParentFolder(), "Data", lang, $"{topic}.json");
 }
 
 
