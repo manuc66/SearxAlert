@@ -3,61 +3,97 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
-List<Results> results = new List<Results>();
-Results[]? lastResults = null;
 var query = "some-topic";
-for (var i = 1; i <= 100 && (lastResults == null || lastResults.Length > 1); i++)
-{
-    lastResults = await GetAndDisplay(query, i);
-    if (lastResults?.Length > 0)
-    {
-        results.AddRange(lastResults);
-    }
-}
 
-var options = new JsonSerializerOptions
-{
-    WriteIndented = true // Enable indentation
-};
+var oldResults = ReadCurrent(query);
+var knownUrl = oldResults!.Select(x => x.url).ToHashSet();
 
-// Serialize the object to JSON and write to a file
-string filePath = Path.Combine(GetParentFolder(), $"{query}.json");
-using (FileStream fs = File.Create(filePath))
-{
-    JsonSerializer.Serialize(fs, results, options);
-}
+var currentResults = await FetchCurrentResults(query);
+
+var newResults = new List<Results>(oldResults);
+newResults.AddRange(currentResults.Where(x => !knownUrl.Contains(x.url)));
+
+
+var filePath = StoreResults(query, newResults);
 
 Console.WriteLine($"Object written to {filePath} with indentation.");
 
 Console.WriteLine("Hello, World!");
 
-async Task<string> GetSearchResultPage(string query, int page)
+string StoreResults(string fileName, List<Results> resultsList)
 {
-    string s;
-    using (HttpClient client = new HttpClient())
+    var options = new JsonSerializerOptions
     {
-        var response = await client.GetAsync(
-            $"https://somewhere.tld/searxng/search?q={query}&language=fr&pageno={page}&format=json");
-        response.EnsureSuccessStatusCode();
-        s = await response.Content.ReadAsStringAsync();
+        WriteIndented = true // Enable indentation
+    };
+
+// Serialize the object to JSON and write to a file
+    string filePath1 = Path.Combine(GetParentFolder(), $"{fileName}.json");
+    using (FileStream fs = File.Create(filePath1))
+    {
+        JsonSerializer.Serialize(fs, resultsList, options);
     }
 
-    return s;
+    return filePath1;
+}
+
+List<Results>? ReadCurrent(string fileName)
+{
+
+// Serialize the object to JSON and write to a file
+    string filePath1 = Path.Combine(GetParentFolder(), $"{fileName}.json");
+    using (FileStream fs = File.OpenRead(filePath1))
+    {
+        return JsonSerializer.Deserialize<List<Results>>(fs);
+    }
+
 }
 
 string GetParentFolder([CallerFilePath] string path = "") => new DirectoryInfo(Path.GetDirectoryName(path)).Parent.FullName;
 
-async Task<Results[]?> GetAndDisplay(string query, int page = 1)
+async Task<List<Results>> FetchCurrentResults(string s1)
 {
-    var data1 = await GetSearchResultPage(query, page);
-    var rootObject = JsonSerializer.Deserialize<RootObject>(data1);
-    var rootObjectResults = rootObject?.results ?? [];
-    foreach (var result in rootObjectResults)
     {
-        Console.WriteLine($"{result.url} --- {result.title}");
+        List<Results> list = new List<Results>();
+        Results[]? lastResults = null;
+        for (var i = 1; i <= 100 && (lastResults == null || lastResults.Length > 1); i++)
+        {
+            lastResults = await GetAndDisplay(s1, i);
+            if (lastResults?.Length > 0)
+            {
+                list.AddRange(lastResults);
+            }
+        }
+
+        return list;
     }
 
-    return rootObjectResults;
+    async Task<string> GetSearchResultPage(string query, int page)
+    {
+        string s;
+        using (HttpClient client = new HttpClient())
+        {
+            var response = await client.GetAsync(
+                $"https://somewhere.tld/searxng/search?q={query}&language=fr&pageno={page}&format=json");
+            response.EnsureSuccessStatusCode();
+            s = await response.Content.ReadAsStringAsync();
+        }
+
+        return s;
+    }
+
+    async Task<Results[]?> GetAndDisplay(string query, int page = 1)
+    {
+        var data1 = await GetSearchResultPage(query, page);
+        var rootObject = JsonSerializer.Deserialize<RootObject>(data1);
+        var rootObjectResults = rootObject?.results ?? [];
+        foreach (var result in rootObjectResults)
+        {
+            Console.WriteLine($"{result.url} --- {result.title}");
+        }
+
+        return rootObjectResults;
+    }
 }
 
 
