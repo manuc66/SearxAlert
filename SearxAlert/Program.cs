@@ -3,11 +3,14 @@ using System.Text.Json;
 
 var tasks = new[]
 {
-    // new
-    // {
-    //     lang = "en",
-    //     topics = new[] { "topic1", "topic2" }
-    // },
+    new
+    {
+        lang = "en",
+        topics = new[]
+        {
+            "topic1", "topic2"
+        }
+    },
     new
     {
         lang = "fr",
@@ -19,6 +22,7 @@ foreach (var task in tasks)
 {
     foreach (string topic in task.topics)
     {
+        Console.WriteLine($"{new string('=', 10)} {task.lang}/{topic} {new string('=', 10)}");
         await ProcessTopic(topic, task.lang);
     }
 }
@@ -36,7 +40,7 @@ async Task ProcessTopic(string topic, string lang)
     var latestResults = new List<Results>(oldResults);
     var newResults = currentResults.Where(x => !knownUrl.Contains(x.url));
 
-    Console.WriteLine("Here are the results:");
+    Console.WriteLine("Here are the new results:");
     foreach (var result in newResults)
     {
         Console.WriteLine($"\t{result.url} - {result.title}");
@@ -70,7 +74,7 @@ async Task<List<Results>> FetchCurrentResults(string s1, string lang)
         Results[]? lastResults = null;
         for (var i = 1; i <= 100 && (lastResults == null || lastResults.Length > 1); i++)
         {
-            lastResults = await GetAndDisplay(s1, lang,i);
+            lastResults = await GetAndDisplay(s1, lang, i);
             if (lastResults?.Length > 0)
             {
                 list.AddRange(lastResults);
@@ -79,35 +83,36 @@ async Task<List<Results>> FetchCurrentResults(string s1, string lang)
 
         return list;
     }
-
-    async Task<string> GetSearchResultPage(string query, string lang, int page)
-    {
-        string s;
-        using (HttpClient client = new HttpClient())
-        {
-            var response = await client.GetAsync(
-                $"https://somewhere.tld/searxng/search?q={query}&language={lang}&pageno={page}&format=json");
-            response.EnsureSuccessStatusCode();
-            s = await response.Content.ReadAsStringAsync();
-        }
-
-        return s;
-    }
-
-    async Task<Results[]?> GetAndDisplay(string query, string lang, int page = 1)
-    {
-        var data1 = await GetSearchResultPage(query, lang, page);
-        var rootObject = JsonSerializer.Deserialize<RootObject>(data1);
-        var rootObjectResults = rootObject?.results ?? [];
-
-        var engines = rootObjectResults.SelectMany(x => x.engines).Distinct();
-
-        Console.WriteLine(
-            $"Page {page} with {rootObjectResults.Length} results about {query} from the following engines: {string.Join(", ", engines)}.");
-
-        return rootObjectResults;
-    }
 }
+
+async Task<string> GetSearchResultPage(string query, string lang, int page)
+{
+    string s;
+    using (HttpClient client = new HttpClient())
+    {
+        var response = await client.GetAsync(
+            $"https://somewhere.tld/searxng/search?q={query}&language={lang}&pageno={page}&format=json");
+        response.EnsureSuccessStatusCode();
+        s = await response.Content.ReadAsStringAsync();
+    }
+
+    return s;
+}
+
+async Task<Results[]?> GetAndDisplay(string query, string lang, int page = 1)
+{
+    var json = await GetSearchResultPage(query, lang, page);
+    var rootObject = JsonSerializer.Deserialize<RootObject>(json);
+    var rootObjectResults = rootObject?.results ?? [];
+
+    var engines = rootObjectResults.SelectMany(x => x.engines).Distinct();
+
+    Console.WriteLine(
+        $"Page {page} with {rootObjectResults.Length} results about {query} from the following engines: {string.Join(", ", engines)}.");
+
+    return rootObjectResults;
+}
+
 
 string StoreResults(string fileName, string lang, List<Results> resultsList)
 {
@@ -167,7 +172,7 @@ public class Infoboxes
 {
     public string infobox { get; set; }
     public string id { get; set; }
-    public string content { get; set; }
+    public object content { get; set; }
     public string img_src { get; set; }
     public Urls[] urls { get; set; }
     public string engine { get; set; }
